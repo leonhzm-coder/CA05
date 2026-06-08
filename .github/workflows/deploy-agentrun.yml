@@ -2,7 +2,7 @@ name: CA05 Agent CI/CD
 
 on:
   push:
-    branches: [dev, main]
+    branches: [dev, main, master]
   workflow_dispatch:
 
 env:
