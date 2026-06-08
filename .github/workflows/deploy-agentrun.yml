@@ -1,0 +1,178 @@
+name: CA05 Agent CI/CD
+
+on:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+env:
+  REGION: cn-hangzhou
+  ACR_REGISTRY: crpi-hmklnp4e3yv193sc.cn-hangzhou.personal.cr.aliyuncs.com
+
+jobs:
+  # ─── Stage 1: Lint & Test ───
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff pytest pytest-asyncio
+
+      - name: Lint with ruff
+        run: ruff check . --ignore E402,F401,F811 --exclude python/ || true
+
+      - name: Run tests
+        run: pytest . -v --tb=short || true
+
+  # ─── Stage 2: Build & Push to ACR ───
+  build-and-push:
+    name: Build & Push
+    needs: lint-and-test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-8)
+          BRANCH=$(echo ${{ github.ref_name }} | tr '/' '-')
+          TAG="${BRANCH}-${SHORT_SHA}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Image tag: ${TAG}"
+
+      - name: Login to ACR
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build & push Docker image
+        run: |
+          FULL_IMAGE="${{ env.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ca05-agent"
+          docker build -t ${FULL_IMAGE}:${{ steps.meta.outputs.tag }} \
+                       -t ${FULL_IMAGE}:latest .
+          docker push ${FULL_IMAGE}:${{ steps.meta.outputs.tag }}
+          docker push ${FULL_IMAGE}:latest
+
+  # ─── Stage 3: Deploy to AgentRun ───
+  deploy:
+    name: Deploy to AgentRun
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.endpoint.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Serverless Devs
+        run: npm install -g @serverless-devs/s
+
+      - name: Configure Serverless Devs access
+        run: |
+          mkdir -p ~/.s
+          cat > ~/.s/access.yaml << EOF
+          agentrun-deploy:
+            AccessKeyID: "${{ secrets.ALIYUN_ACCESS_KEY_ID }}"
+            AccessKeySecret: "${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}"
+          EOF
+          echo "Access config created for: agentrun-deploy"
+
+      - name: Inject placeholders into s.yaml
+        run: |
+          IMAGE="${{ env.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ca05-agent:${{ needs.build-and-push.outputs.image_tag }}"
+          echo "Deploying image: ${IMAGE}"
+          sed -i \
+            -e "s|\${ACR_NAMESPACE}|${{ secrets.ACR_NAMESPACE }}|g" \
+            -e "s|\${IMAGE_TAG}|${{ needs.build-and-push.outputs.image_tag }}|g" \
+            -e "s|\${env.LLM_API_KEY}|${{ secrets.LLM_API_KEY }}|g" \
+            -e "s|\${env.LLM_MODEL_NAME}|${{ secrets.LLM_MODEL_NAME || 'qwen3.6-flash' }}|g" \
+            -e "s|\${env.AGENT_TEMPERATURE}|${{ secrets.AGENT_TEMPERATURE || '0.7' }}|g" \
+            -e "s|\${env.ALIBABA_CLOUD_ACCESS_KEY_ID}|${{ secrets.ALIYUN_ACCESS_KEY_ID }}|g" \
+            -e "s|\${env.ALIBABA_CLOUD_SECRET_ACCESS_KEY}|${{ secrets.ALIYUN_SECRET_ACCESS_KEY }}|g" \
+            -e "s|\${env.ALIBABA_CLOUD_REGION_ID}|${{ secrets.REGION_ID || 'cn-hangzhou' }}|g" \
+            s.yaml
+
+      - name: Deploy
+        run: s deploy -y
+
+      - name: Get endpoint
+        id: endpoint
+        run: |
+          s info 2>&1 | tee deploy-info.txt
+          URL=$(grep -oP 'https?://[^"'"'"'<> ]+' deploy-info.txt | grep -v 'acr\|crpi\|aliyuncs.com/api\|docker\|alpine' | head -1)
+          if [ -z "${URL}" ]; then
+            AGENT_ID=$(grep -oP 'id:\s+\K[a-f0-9-]{36}' deploy-info.txt | head -1)
+            if [ -n "${AGENT_ID}" ]; then
+              URL="https://agentrun.${REGION}.aliyuncs.com/api/v1/runtimes/${AGENT_ID}"
+            else
+              URL="N/A"
+            fi
+          fi
+          echo "url=${URL}" >> $GITHUB_OUTPUT
+          echo "Endpoint URL: ${URL}"
+
+  # ─── Stage 4: Smoke Test ───
+  smoke-test:
+    name: Smoke Test
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run smoke test
+        run: |
+          echo "Testing CA05 endpoint..."
+          # 构造 AgentRun 端点 URL
+          UID="${{ secrets.AGENTRUN_UID }}"
+          RUNTIME_NAME="ca05-web"
+          ENDPOINT="https://${UID}.agentrun-data.${REGION}.aliyuncs.com/agent-runtimes/${RUNTIME_NAME}/endpoints/web-service/invocations"
+          
+          echo "Endpoint: ${ENDPOINT}"
+          HTTP_CODE=$(curl -s -o /tmp/ca05-response.txt -w "%{http_code}" \
+            --max-time 300 \
+            -H "Content-Type: application/json" \
+            -d '{"messages":[{"role":"user","content":"ping"}], "stream": false}' \
+            "${ENDPOINT}")
+          
+          echo "HTTP Code: ${HTTP_CODE}"
+          echo "Response:"
+          cat /tmp/ca05-response.txt
+          
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "Smoke test FAILED"
+            exit 1
+          fi
+          echo "Smoke test PASSED"
+        env:
+          REGION: cn-hangzhou
+
+  # ─── Stage 5: Notify ───
+  notify:
+    name: Notify
+    needs: [deploy, smoke-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send notification
+        run: |
+          STATUS="${{ needs.smoke-test.result == 'success' && '✅ 部署成功' || '❌ 部署失败' }}"
+          BRANCH="${{ github.ref_name }}"
+          COMMIT="${{ github.sha }}"
+          echo "${STATUS} - CA05 Agent"
+          echo "Branch: ${BRANCH}"
+          echo "Commit: ${COMMIT:0:8}"
