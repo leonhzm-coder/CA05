@@ -4,7 +4,6 @@ access: "agentrun-deploy"
 
 vars:
   region: cn-hangzhou
-  acrRegistry: crpi-hmklnp4e3yv193sc.cn-hangzhou.personal.cr.aliyuncs.com
 
 resources:
   dev-agent:
@@ -14,11 +13,13 @@ resources:
       agent:
         name: ca05-web
         description: "CA05 – Cross-Cloud Operations Assistant"
-        customContainerConfig:
-          image: "${vars.acrRegistry}/${ACR_NAMESPACE}/ca05-agent:${IMAGE_TAG}"
-          command:
-            - python3
-            - main.py
+
+        # 源代码部署（无需 Docker 镜像/ACR）
+        code:
+          src: ./
+          language: python3.11
+          command: [python3, main.py]
+
         port: 9000
         endpoints:
           - name: web-service
@@ -39,7 +40,7 @@ resources:
           ALIBABA_CLOUD_SECRET_ACCESS_KEY: '${env.ALIBABA_CLOUD_SECRET_ACCESS_KEY}'
           ALIBABA_CLOUD_REGION_ID: '${env.ALIBABA_CLOUD_REGION_ID}'
           CA05_MEMORY_FILE: '/app/memory/ca05_memory.json'
-          ENV: 'dev'
+          ENV: 'production'
         armsConfiguration:
           enable: true
         healthCheckConfiguration:
