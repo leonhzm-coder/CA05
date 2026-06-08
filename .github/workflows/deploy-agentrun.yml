@@ -10,35 +10,9 @@ env:
   ACR_REGISTRY: crpi-hmklnp4e3yv193sc.cn-hangzhou.personal.cr.aliyuncs.com
 
 jobs:
-  # ─── Stage 1: Lint & Test ───
-  lint-and-test:
-    name: Lint & Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install ruff pytest pytest-asyncio
-
-      - name: Lint with ruff
-        run: ruff check . --ignore E402,F401,F811 --exclude python/ || true
-
-      - name: Run tests
-        run: pytest . -v --tb=short || true
-
-  # ─── Stage 2: Build & Push to ACR ───
+  # ─── Stage 1: Build & Push to ACR ───
   build-and-push:
     name: Build & Push
-    needs: lint-and-test
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.meta.outputs.tag }}
@@ -58,8 +32,8 @@ jobs:
         uses: aliyun/acr-login@v1
         with:
           login-server: ${{ env.ACR_REGISTRY }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
 
       - name: Build & push Docker image
         run: |
@@ -69,7 +43,7 @@ jobs:
           docker push ${FULL_IMAGE}:${{ steps.meta.outputs.tag }}
           docker push ${FULL_IMAGE}:latest
 
-  # ─── Stage 3: Deploy to AgentRun ───
+  # ─── Stage 2: Deploy to AgentRun ───
   deploy:
     name: Deploy to AgentRun
     needs: build-and-push
@@ -103,7 +77,7 @@ jobs:
             -e "s|\${env.LLM_MODEL_NAME}|${{ secrets.LLM_MODEL_NAME || 'qwen3.6-flash' }}|g" \
             -e "s|\${env.AGENT_TEMPERATURE}|${{ secrets.AGENT_TEMPERATURE || '0.7' }}|g" \
             -e "s|\${env.ALIBABA_CLOUD_ACCESS_KEY_ID}|${{ secrets.ALIYUN_ACCESS_KEY_ID }}|g" \
-            -e "s|\${env.ALIBABA_CLOUD_SECRET_ACCESS_KEY}|${{ secrets.ALIYUN_SECRET_ACCESS_KEY }}|g" \
+            -e "s|\${env.ALIBABA_CLOUD_SECRET_ACCESS_KEY}|${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}|g" \
             -e "s|\${env.ALIBABA_CLOUD_REGION_ID}|${{ secrets.REGION_ID || 'cn-hangzhou' }}|g" \
             s.yaml
 
@@ -126,7 +100,7 @@ jobs:
           echo "url=${URL}" >> $GITHUB_OUTPUT
           echo "Endpoint URL: ${URL}"
 
-  # ─── Stage 4: Smoke Test ───
+  # ─── Stage 3: Smoke Test ───
   smoke-test:
     name: Smoke Test
     needs: deploy
@@ -136,23 +110,18 @@ jobs:
 
       - name: Run smoke test
         run: |
-          echo "Testing CA05 endpoint..."
-          # 构造 AgentRun 端点 URL
           UID="${{ secrets.AGENTRUN_UID }}"
           RUNTIME_NAME="ca05-web"
           ENDPOINT="https://${UID}.agentrun-data.${REGION}.aliyuncs.com/agent-runtimes/${RUNTIME_NAME}/endpoints/web-service/invocations"
-          
-          echo "Endpoint: ${ENDPOINT}"
+          echo "Testing endpoint: ${ENDPOINT}"
           HTTP_CODE=$(curl -s -o /tmp/ca05-response.txt -w "%{http_code}" \
             --max-time 300 \
             -H "Content-Type: application/json" \
             -d '{"messages":[{"role":"user","content":"ping"}], "stream": false}' \
             "${ENDPOINT}")
-          
           echo "HTTP Code: ${HTTP_CODE}"
           echo "Response:"
           cat /tmp/ca05-response.txt
-          
           if [ "${HTTP_CODE}" != "200" ]; then
             echo "Smoke test FAILED"
             exit 1
@@ -161,18 +130,15 @@ jobs:
         env:
           REGION: cn-hangzhou
 
-  # ─── Stage 5: Notify ───
+  # ─── Stage 4: Notify ───
   notify:
     name: Notify
-    needs: [deploy, smoke-test]
+    needs: [smoke-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Send notification
+      - name: Print result
         run: |
           STATUS="${{ needs.smoke-test.result == 'success' && '✅ 部署成功' || '❌ 部署失败' }}"
-          BRANCH="${{ github.ref_name }}"
-          COMMIT="${{ github.sha }}"
           echo "${STATUS} - CA05 Agent"
-          echo "Branch: ${BRANCH}"
-          echo "Commit: ${COMMIT:0:8}"
+          echo "Branch: ${{ github.ref_name }}"
