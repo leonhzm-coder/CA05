@@ -105,19 +105,25 @@ jobs:
         run: |
           ENDPOINT="${{ steps.endpoint.outputs.url }}"
           echo "Testing endpoint: ${ENDPOINT}"
-          HTTP_CODE=$(curl -s -o /tmp/ca05-response.txt -w "%{http_code}" \
-            --max-time 300 \
-            -H "Content-Type: application/json" \
-            -d '{"messages":[{"role":"user","content":"ping"}], "stream": false}' \
-            "${ENDPOINT}")
-          echo "HTTP Code: ${HTTP_CODE}"
-          echo "Response:"
-          cat /tmp/ca05-response.txt
-          if [ "${HTTP_CODE}" != "200" ]; then
-            echo "Smoke test FAILED"
-            exit 1
-          fi
-          echo "Smoke test PASSED"
+          for i in $(seq 1 10); do
+            echo "--- Attempt $i ---"
+            HTTP_CODE=$(curl -s -o /tmp/ca05-response.txt -w "%{http_code}" \
+              --max-time 60 \
+              -H "Content-Type: application/json" \
+              -d '{"messages":[{"role":"user","content":"ping"}], "stream": false}' \
+              "${ENDPOINT}")
+            echo "HTTP Code: ${HTTP_CODE}"
+            echo "Response:"
+            cat /tmp/ca05-response.txt
+            if [ "${HTTP_CODE}" = "200" ]; then
+              echo "Smoke test PASSED"
+              exit 0
+            fi
+            echo "Retrying in 15s..."
+            sleep 15
+          done
+          echo "Smoke test FAILED after 10 attempts"
+          exit 1
 
   # ─── Stage 4: Notify ───
   notify:
