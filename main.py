@@ -169,28 +169,54 @@ async def startup_event():
 
 
 async def _init_llm() -> Optional[ChatOpenAI]:
-    """尝试初始化 LLM"""
+    """尝试初始化 LLM
+
+    优先级:
+    1. AgentRun 模型服务 (MODEL_SERVICE_NAME + MODEL)
+    2. 直接 API Key (LLM_API_KEY / OPENAI_API_KEY + LLM_MODEL_NAME / MODEL)
+    """
+    model_service_name = os.getenv("MODEL_SERVICE_NAME")
+
+    # 方式 1: AgentRun 模型服务
+    if model_service_name:
+        try:
+            from agentrun.integration.langchain import model as agentrun_model
+            model_service = agentrun_model(model_service_name)
+            llm = ChatOpenAI(
+                api_key=model_service.openai_api_key,
+                model=os.getenv("MODEL", "qwen3-max"),
+                base_url=model_service.openai_api_base,
+                temperature=float(os.getenv("AGENT_TEMPERATURE", "0.7")),
+                streaming=True
+            )
+            print(f"[init] 使用 AgentRun 模型服务: {model_service_name}, model={os.getenv('MODEL', 'qwen3-max')}")
+            return llm
+        except Exception as e:
+            print(f"[init] AgentRun 模型服务不可用: {e}")
+            print(f"[init] 降级到直接 API Key 方式")
+
+    # 方式 2: 直接 API Key
     api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("LLM_BASE_URL") or os.getenv("OPENAI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     model_name = os.getenv("LLM_MODEL_NAME") or os.getenv("MODEL", "qwen3-max")
 
-    if not api_key:
-        print(f"[init] 未设置 API KEY")
-        return None
+    if api_key:
+        try:
+            llm = ChatOpenAI(
+                api_key=api_key,
+                model=model_name,
+                base_url=base_url,
+                temperature=float(os.getenv("AGENT_TEMPERATURE", "0.7")),
+                streaming=True
+            )
+            print(f"[init] 使用直接 API Key: model={model_name}")
+            return llm
+        except Exception as e:
+            print(f"[init] LLM 初始化失败: {e}")
+            return None
 
-    try:
-        llm = ChatOpenAI(
-            api_key=api_key,
-            model=model_name,
-            base_url=base_url,
-            temperature=float(os.getenv("AGENT_TEMPERATURE", "0.7")),
-            streaming=True
-        )
-        print(f"[init] LLM 初始化成功: model={model_name}")
-        return llm
-    except Exception as e:
-        print(f"[init] LLM 初始化失败: {e}")
-        return None
+    print(f"[init] 未配置 LLM（设置 MODEL_SERVICE_NAME 或 LLM_API_KEY）")
+    return None
 
 
 async def _ensure_agent():
