@@ -14,9 +14,9 @@ resources:
         name: ca05-web
         description: "CA05 - Cross-Cloud Operations Assistant"
 
-        # Docker image deployment via GitHub Container Registry
+        # Docker image deployment via ACR
         customContainerConfig:
-          image: 'ghcr.io/leonhzm-coder/ca05:${IMAGE_TAG}'
+          image: '${vars.acrRegistry}/${ACR_NAMESPACE}/ca05:${IMAGE_TAG}'
           command: ['python3', 'main.py']
 
         port: 9000
