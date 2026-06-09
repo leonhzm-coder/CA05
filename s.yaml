@@ -15,41 +15,4 @@ resources:
         description: "CA05 – Cross-Cloud Operations Assistant"
 
         # 源代码部署（无需 Docker 镜像/ACR）
-        code:
-          src: ./
-          language: python3.12
-          command: ['sh', './start.sh']
-
-        port: 9000
-        endpoints:
-          - name: web-service
-            description: "Public web service endpoint for CA05"
-        cpu: 1.0
-        memory: 2048
-        diskSize: 1024
-        instanceConcurrency: 50
-        sessionIdleTimeoutSeconds: 3600
-        enableSessionIsolation: true
-        internetAccess: true
-        environmentVariables:
-          MODEL_SERVICE_NAME: '${env.MODEL_SERVICE_NAME}'
-          MODEL: '${env.MODEL}'
-          LLM_API_KEY: '${env.LLM_API_KEY}'
-          LLM_BASE_URL: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-          LLM_MODEL_NAME: '${env.LLM_MODEL_NAME}'
-          AGENT_TEMPERATURE: '${env.AGENT_TEMPERATURE}'
-          ALIBABA_CLOUD_ACCESS_KEY_ID: '${env.ALIBABA_CLOUD_ACCESS_KEY_ID}'
-          ALIBABA_CLOUD_SECRET_ACCESS_KEY: '${env.ALIBABA_CLOUD_SECRET_ACCESS_KEY}'
-          ALIBABA_CLOUD_REGION_ID: '${env.ALIBABA_CLOUD_REGION_ID}'
-          CA05_MEMORY_FILE: '/app/memory/ca05_memory.json'
-          ENV: 'production'
-        armsConfiguration:
-          enable: true
-        healthCheckConfiguration:
-          httpGet:
-            path: /health
-            port: 9000
-          initialDelaySeconds: 30
-          periodSeconds: 60
-          timeoutSeconds: 10
-          failureThreshold: 6
+        customContainerConfig:/n          image: 'ghcr.io/leonhzm-coder/ca05:${IMAGE_TAG}'/n          command: ['python3', 'main.py']
