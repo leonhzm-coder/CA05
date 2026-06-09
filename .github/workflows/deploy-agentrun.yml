@@ -34,6 +34,8 @@ jobs:
       - name: Inject environment variables into s.yaml
         run: |
           sed -i \
+            -e "s|\${env.MODEL_SERVICE_NAME}|${{ secrets.MODEL_SERVICE_NAME }}|g" \
+            -e "s|\${env.MODEL}|${{ secrets.MODEL || 'qwen3.6-flash' }}|g" \
             -e "s|\${env.LLM_API_KEY}|${{ secrets.LLM_API_KEY }}|g" \
             -e "s|\${env.LLM_MODEL_NAME}|${{ secrets.LLM_MODEL_NAME || 'qwen3.6-flash' }}|g" \
             -e "s|\${env.AGENT_TEMPERATURE}|${{ secrets.AGENT_TEMPERATURE || '0.7' }}|g" \
