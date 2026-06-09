@@ -66,6 +66,7 @@ class CA05Agent:
         """定义状态 schema"""
         class AgentState(TypedDict):
             messages: List[BaseMessage]
+            remaining_steps: int
             memory_context: Optional[str]
 
         return AgentState
