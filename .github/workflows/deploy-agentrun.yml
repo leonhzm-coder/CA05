@@ -112,7 +112,7 @@ jobs:
       - name: Run smoke test
         run: |
           AGENT_UID="${{ secrets.AGENTRUN_UID }}"
-          RUNTIME_NAME="ca05-web"
+          RUNTIME_NAME="ca05-cnt"
           ENDPOINT="https://${AGENT_UID}.agentrun-data.${REGION}.aliyuncs.com/agent-runtimes/${RUNTIME_NAME}/endpoints/web-service/invocations"
           echo "Testing endpoint: ${ENDPOINT}"
           HTTP_CODE=$(curl -s -o /tmp/ca05-response.txt -w "%{http_code}" \

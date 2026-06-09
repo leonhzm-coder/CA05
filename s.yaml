@@ -1,5 +1,5 @@
 edition: 3.0.0
-name: ca05-web
+name: ca05-cnt
 access: "agentrun-deploy"
 
 vars:
@@ -12,7 +12,7 @@ resources:
     props:
       region: ${vars.region}
       agent:
-        name: ca05-web
+        name: ca05-cnt
         description: "CA05 – Cross-Cloud Operations Assistant"
         customContainerConfig:
           image: "${vars.acrRegistry}/${ACR_NAMESPACE}/ca05:${IMAGE_TAG}"
