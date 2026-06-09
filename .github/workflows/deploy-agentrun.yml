@@ -7,11 +7,46 @@ on:
 
 env:
   REGION: cn-hangzhou
+  ACR_REGISTRY: crpi-hmklnp4e3yv193sc.cn-hangzhou.personal.cr.aliyuncs.com
 
 jobs:
-  # ─── Deploy to AgentRun ───
+  # ─── Stage 1: Build & Push to ACR ───
+  build-and-push:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-8)
+          BRANCH=$(echo ${{ github.ref_name }} | tr '/' '-')
+          TAG="${BRANCH}-${SHORT_SHA}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Image tag: ${TAG}"
+
+      - name: Login to ACR
+        uses: aliyun/acr-login@v1
+        with:
+          login-server: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build & push Docker image
+        run: |
+          FULL_IMAGE="${{ env.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ca05"
+          docker build -t ${FULL_IMAGE}:${{ steps.meta.outputs.tag }} \
+                       -t ${FULL_IMAGE}:latest .
+          docker push ${FULL_IMAGE}:${{ steps.meta.outputs.tag }}
+          docker push ${FULL_IMAGE}:latest
+
+  # ─── Stage 2: Deploy to AgentRun ───
   deploy:
     name: Deploy to AgentRun
+    needs: build-and-push
     runs-on: ubuntu-latest
     outputs:
       url: ${{ steps.endpoint.outputs.url }}
@@ -30,11 +65,13 @@ jobs:
             AccessKeySecret: "${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}"
             AccountID: "${{ secrets.AGENTRUN_UID }}"
           EOF
-          echo "Access config created for: agentrun-deploy (AccountID: ${{ secrets.AGENTRUN_UID }})"
+          echo "Access config created for: agentrun-deploy"
 
-      - name: Inject environment variables into s.yaml
+      - name: Inject placeholders into s.yaml
         run: |
           sed -i \
+            -e "s|\${ACR_NAMESPACE}|${{ secrets.ACR_NAMESPACE }}|g" \
+            -e "s|\${IMAGE_TAG}|${{ needs.build-and-push.outputs.image_tag }}|g" \
             -e "s|\${env.MODEL_SERVICE_NAME}|${{ secrets.MODEL_SERVICE_NAME }}|g" \
             -e "s|\${env.MODEL}|${{ secrets.MODEL || 'qwen3.6-flash' }}|g" \
             -e "s|\${env.LLM_API_KEY}|${{ secrets.LLM_API_KEY }}|g" \
@@ -45,7 +82,7 @@ jobs:
             -e "s|\${env.ALIBABA_CLOUD_REGION_ID}|${{ secrets.REGION_ID || 'cn-hangzhou' }}|g" \
             s.yaml
           echo "s.yaml after injection:"
-          grep -v "ACCESS_KEY\|SECRET\|API_KEY" s.yaml | head -30
+          grep -v "ACCESS_KEY\|SECRET\|API_KEY" s.yaml | head -40
 
       - name: Deploy
         run: s deploy -y
@@ -66,7 +103,7 @@ jobs:
           echo "url=${URL}" >> $GITHUB_OUTPUT
           echo "Endpoint URL: ${URL}"
 
-  # ─── Smoke Test ───
+  # ─── Stage 3: Smoke Test ───
   smoke-test:
     name: Smoke Test
     needs: deploy
@@ -94,15 +131,16 @@ jobs:
         env:
           REGION: cn-hangzhou
 
-  # ─── Notify ───
+  # ─── Stage 4: Notify ───
   notify:
     name: Notify
     needs: [smoke-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Print result
+      - name: Send notification
         run: |
-          STATUS="${{ needs.smoke-test.result == 'success' && '✅ 部署成功' || '❌ 部署失败' }}"
-          echo "${STATUS} - CA05 Agent"
+          STATUS="${{ needs.smoke-test.result == 'success' && 'success' || 'failed' }}"
+          echo "${STATUS} - CA05 Agent deployment"
           echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
