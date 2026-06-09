@@ -48,8 +48,6 @@ jobs:
     name: Deploy to AgentRun
     needs: build-and-push
     runs-on: ubuntu-latest
-    outputs:
-      url: ${{ steps.endpoint.outputs.url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -103,15 +101,9 @@ jobs:
           echo "url=${URL}" >> $GITHUB_OUTPUT
           echo "Endpoint URL: ${URL}"
 
-  # ─── Stage 3: Smoke Test ───
-  smoke-test:
-    name: Smoke Test
-    needs: deploy
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run smoke test
+      - name: Smoke test
         run: |
-          ENDPOINT="${{ needs.deploy.outputs.url }}"
+          ENDPOINT="${{ steps.endpoint.outputs.url }}"
           echo "Testing endpoint: ${ENDPOINT}"
           HTTP_CODE=$(curl -s -o /tmp/ca05-response.txt -w "%{http_code}" \
             --max-time 300 \
@@ -130,13 +122,13 @@ jobs:
   # ─── Stage 4: Notify ───
   notify:
     name: Notify
-    needs: [smoke-test]
+    needs: [deploy]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Send notification
         run: |
-          STATUS="${{ needs.smoke-test.result == 'success' && 'success' || 'failed' }}"
+          STATUS="${{ needs.deploy.result == 'success' && 'success' || 'failed' }}"
           echo "${STATUS} - CA05 Agent deployment"
           echo "Branch: ${{ github.ref_name }}"
           echo "Commit: ${{ github.sha }}"
