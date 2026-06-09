@@ -28,8 +28,9 @@ jobs:
           agentrun-deploy:
             AccessKeyID: "${{ secrets.ALIYUN_ACCESS_KEY_ID }}"
             AccessKeySecret: "${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}"
+            AccountID: "${{ secrets.AGENTRUN_UID }}"
           EOF
-          echo "Access config created for: agentrun-deploy"
+          echo "Access config created for: agentrun-deploy (AccountID: ${{ secrets.AGENTRUN_UID }})"
 
       - name: Inject environment variables into s.yaml
         run: |
