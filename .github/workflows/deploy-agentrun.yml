@@ -104,7 +104,12 @@ jobs:
       - name: Smoke test
         run: |
           ENDPOINT="${{ steps.endpoint.outputs.url }}"
-          echo "Testing endpoint: ${ENDPOINT}"
+          echo "=== Step 1: Health check (GET /health) ==="
+          HTTP_CODE=$(curl -s -o /tmp/ca05-health.txt -w "%{http_code}" --max-time 10 "${ENDPOINT%/invocations*}/health")
+          echo "Health HTTP Code: ${HTTP_CODE}"
+          cat /tmp/ca05-health.txt
+          echo ""
+          echo "=== Step 2: Chat invocation (POST) ==="
           for i in $(seq 1 10); do
             echo "--- Attempt $i ---"
             HTTP_CODE=$(curl -s -o /tmp/ca05-response.txt -w "%{http_code}" \
@@ -115,6 +120,7 @@ jobs:
             echo "HTTP Code: ${HTTP_CODE}"
             echo "Response:"
             cat /tmp/ca05-response.txt
+            echo ""
             if [ "${HTTP_CODE}" = "200" ]; then
               echo "Smoke test PASSED"
               exit 0

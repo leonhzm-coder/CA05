@@ -337,6 +337,13 @@ async def chat_completions(request: ChatCompletionRequest):
     )
 
 
+@app.post("/")
+@app.post("/invocations")
+async def root_invocations(request: ChatCompletionRequest):
+    """AgentRun 端点转发到根路径时的处理"""
+    return await chat_completions(request)
+
+
 # ========== 记忆管理 API ==========
 
 class MemoryWriteRequest(BaseModel):
