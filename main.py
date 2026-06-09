@@ -114,6 +114,7 @@ ALL_TOOLS = [
 
 ca05_agent: Optional[CA05Agent] = None
 memory_mgr: MemoryManager = None
+agentrun_store = None  # AgentRun SessionStore for OTS persistence
 
 
 # ========== FastAPI App ==========
@@ -138,13 +139,27 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    global memory_mgr, ca05_agent
+    global memory_mgr, ca05_agent, agentrun_store
 
     print(f"[startup] CA05 跨云运维助手 启动中...")
     print(f"[startup] Aliyun CLI 已安装: {check_aliyun_installed()}")
 
-    # 初始化记忆管理器
-    memory_mgr = MemoryManager()
+    # 初始化 AgentRun SessionStore（OTS 持久化记忆）
+    collection_name = os.getenv("MEMORY_COLLECTION_NAME")
+    if collection_name:
+        try:
+            from agentrun.conversation_service import SessionStore
+            agentrun_store = SessionStore.from_memory_collection(collection_name)
+            print(f"[startup] 连接 AgentRun 记忆存储: {collection_name}")
+        except Exception as e:
+            print(f"[startup] AgentRun 记忆存储不可用: {e}")
+            print(f"[startup] 将降级到本地缓存")
+            agentrun_store = None
+    else:
+        print(f"[startup] 未设置 MEMORY_COLLECTION_NAME，使用本地缓存")
+
+    # 初始化记忆管理器（传入 store 以使用 OTS 持久化）
+    memory_mgr = MemoryManager(store=agentrun_store)
     print(f"[startup] 记忆管理器已初始化")
 
     # 配置阿里云 CLI（从环境变量）
@@ -156,7 +171,7 @@ async def startup_event():
     # 初始化 LLM（惰性初始化）
     llm = await _init_llm()
     if llm is not None:
-        ca05_agent = CA05Agent(llm, ALL_TOOLS, memory_mgr)
+        ca05_agent = CA05Agent(llm, ALL_TOOLS, memory_mgr, store=agentrun_store)
         print(f"[startup] CA05 Agent 初始化成功")
     else:
         ca05_agent = None
@@ -231,7 +246,7 @@ async def _ensure_agent():
             status_code=500,
             detail="LLM not initialized. Set LLM_API_KEY / LLM_BASE_URL / LLM_MODEL_NAME environment variables."
         )
-    ca05_agent = CA05Agent(llm, ALL_TOOLS, memory_mgr)
+    ca05_agent = CA05Agent(llm, ALL_TOOLS, memory_mgr, store=agentrun_store)
     print("[lazy-init] CA05 Agent 初始化完成")
 
 

@@ -40,7 +40,7 @@ resources:
           ALIBABA_CLOUD_ACCESS_KEY_ID: '${env.ALIBABA_CLOUD_ACCESS_KEY_ID}'
           ALIBABA_CLOUD_SECRET_ACCESS_KEY: '${env.ALIBABA_CLOUD_SECRET_ACCESS_KEY}'
           ALIBABA_CLOUD_REGION_ID: '${env.ALIBABA_CLOUD_REGION_ID}'
-          CA05_MEMORY_FILE: '/app/memory/ca05_memory.json'
+          MEMORY_COLLECTION_NAME: '${env.MEMORY_COLLECTION_NAME}'
           ENV: 'production'
         armsConfiguration:
           enable: true

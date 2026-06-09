@@ -78,6 +78,7 @@ jobs:
             -e "s|\${env.ALIBABA_CLOUD_ACCESS_KEY_ID}|${{ secrets.ALIYUN_ACCESS_KEY_ID }}|g" \
             -e "s|\${env.ALIBABA_CLOUD_SECRET_ACCESS_KEY}|${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}|g" \
             -e "s|\${env.ALIBABA_CLOUD_REGION_ID}|${{ secrets.REGION_ID || 'cn-hangzhou' }}|g" \
+            -e "s|\${env.MEMORY_COLLECTION_NAME}|${{ secrets.MEMORY_COLLECTION_NAME }}|g" \
             s.yaml
           echo "s.yaml after injection:"
           grep -v "ACCESS_KEY\|SECRET\|API_KEY" s.yaml | head -40

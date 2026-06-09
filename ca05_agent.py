@@ -35,12 +35,14 @@ class CA05Agent:
     支持多线程会话和长期记忆。
     """
 
-    def __init__(self, llm, tools: list, memory_mgr: Optional[MemoryManager] = None):
+    def __init__(self, llm, tools: list, memory_mgr: Optional[MemoryManager] = None,
+                 store=None):
         """
         Args:
             llm: ChatOpenAI 实例
             tools: 工具列表
             memory_mgr: MemoryManager 实例（可选，默认创建新实例）
+            store: AgentRun SessionStore 实例（可选，用于 OTS 持久化）
         """
         self.llm = llm
         self.tools = tools
@@ -55,8 +57,21 @@ class CA05Agent:
             state_schema=self._get_state_schema(),
         )
 
-        # 使用 MemorySaver 实现对话历史持久化
-        self.checkpointer = MemorySaver()
+        # 使用 AgentRun OTSCheckpointSaver 实现跨会话持久化（OTS 表存储）
+        # 降级方案：MemorySaver（内存）
+        if store is not None:
+            try:
+                store.init_langgraph_tables()
+                from agentrun.conversation_service.adapters import OTSCheckpointSaver
+                self.checkpointer = OTSCheckpointSaver(store, agent_id="ca05")
+                print(f"[CA05Agent] 使用 OTSCheckpointSaver (OTS 持久化)")
+            except Exception as e:
+                print(f"[CA05Agent] OTSCheckpointSaver 初始化失败: {e}")
+                print(f"[CA05Agent] 降级到 MemorySaver (内存)")
+                self.checkpointer = MemorySaver()
+        else:
+            self.checkpointer = MemorySaver()
+            print(f"[CA05Agent] 使用 MemorySaver (内存)")
 
         print(f"[CA05Agent] 初始化完成，已注册 {len(tools)} 个工具:")
         for t in tools:
@@ -249,5 +264,5 @@ class CA05Agent:
             "created_at": context.get("created_at", ""),
             "last_interaction": context.get("last_interaction", ""),
             "message_count": len(self.get_messages(thread_id)),
-            "memory_size": len(json.dumps(self.memory_mgr.memory, ensure_ascii=False))
+            "memory_size": len(json.dumps(self.memory_mgr.read(), ensure_ascii=False))
         }

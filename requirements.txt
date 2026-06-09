@@ -8,3 +8,4 @@ httpx==0.28.1
 beautifulsoup4==4.13.3
 lxml==5.3.1
 pydantic==2.10.6
+agentrun
