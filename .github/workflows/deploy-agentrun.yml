@@ -74,9 +74,9 @@ jobs:
     steps:
       - name: Run smoke test
         run: |
-          UID="${{ secrets.AGENTRUN_UID }}"
+          AGENT_UID="${{ secrets.AGENTRUN_UID }}"
           RUNTIME_NAME="ca05-web"
-          ENDPOINT="https://${UID}.agentrun-data.${REGION}.aliyuncs.com/agent-runtimes/${RUNTIME_NAME}/endpoints/web-service/invocations"
+          ENDPOINT="https://${AGENT_UID}.agentrun-data.${REGION}.aliyuncs.com/agent-runtimes/${RUNTIME_NAME}/endpoints/web-service/invocations"
           echo "Testing endpoint: ${ENDPOINT}"
           HTTP_CODE=$(curl -s -o /tmp/ca05-response.txt -w "%{http_code}" \
             --max-time 300 \
