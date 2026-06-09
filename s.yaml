@@ -4,6 +4,7 @@ access: "agentrun-deploy"
 
 vars:
   region: cn-hangzhou
+  acrRegistry: crpi-hmklnp4e3yv193sc.cn-hangzhou.personal.cr.aliyuncs.com
 
 resources:
   dev-agent:
