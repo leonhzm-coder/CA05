@@ -17,7 +17,7 @@ resources:
         # 源代码部署（无需 Docker 镜像/ACR）
         code:
           src: ./
-          language: python3.11
+          language: python3.12
           command: [python3, main.py]
 
         port: 9000
